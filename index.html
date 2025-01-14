@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Ball Reflection</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #03b1fb, #4401fb, #02fb72);
+        }
+        canvas {
+            display: block;
+        }
+        #levelDisplay, #gameOverMessage {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 30px;
+            font-family: Arial, sans-serif;
+            z-index: 10;
+        }
+        #gameOverMessage {
+            top: 50%;
+            font-size: 20px;
+            display: none;
+        }
+        #restartButton {
+            top: 60%;
+            background-color: #ff4081;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 8px;
+            display: none;
+            transition: background-color 0.3s;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        #restartButton:hover {
+            background-color: #e040fb;
+        }
+
+        #restartButton:active {
+            background-color: #c2185b;
+        }
+
+    </style>
+</head>
+<body>
+    <div id="levelDisplay">Level: 1</div>
+    <div id="gameOverMessage">Game Over</div>
+    <button id="restartButton">Restart</button>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // Display elements
+        const levelDisplay = document.getElementById('levelDisplay');
+        const gameOverMessage = document.getElementById('gameOverMessage');
+        const restartButton = document.getElementById('restartButton');
+
+        // Paddle setup
+        const paddleGeometry = new THREE.BoxGeometry(0.8, 0.2, 0.2);
+        const paddleMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+        const paddle = new THREE.Mesh(paddleGeometry, paddleMaterial);
+        paddle.position.y = -3.5;
+        paddle.castShadow = true;
+        scene.add(paddle);
+
+        // Ball setup
+        const ballGeometry = new THREE.SphereGeometry(0.15, 16, 16);
+        const ballMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+        ball.position.y = 0;
+        ball.castShadow = true;
+        scene.add(ball);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+
+        const spotlight = new THREE.SpotLight(0xffffff, 1);
+        spotlight.position.set(5, 10, 5);
+        spotlight.castShadow = true;
+        scene.add(spotlight);
+
+        // Floor
+        const floorGeometry = new THREE.PlaneGeometry(10, 10);
+        const floorMaterial = new THREE.ShadowMaterial({ opacity: 0.3 });
+        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = -4;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // Variables for game mechanics
+        let ballSpeedX = 0.05;
+        let ballSpeedY = 0.05;
+        let currentLevel = 1;
+        let boxes = [];
+        const boxSize = 0.4;
+        let isGameOver = false;
+
+        // Define smaller wall boundaries
+        const wallLeft = -2.5; // Left wall position
+        const wallRight = 2.5; // Right wall position
+        const wallTop = 5; // Top wall position
+        const wallBottom = -4; // Bottom wall position (game over line)
+
+        // Create boxes for the level
+        function createBoxes(level) {
+            const boxCount = 3 + level; // Fewer boxes for smaller screen
+            boxes.forEach(box => scene.remove(box)); // Clear previous boxes
+            boxes = [];
+            for (let i = 0; i < boxCount; i++) {
+                const boxGeometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
+                const boxMaterial = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
+                const box = new THREE.Mesh(boxGeometry, boxMaterial);
+                box.position.set(
+                    (Math.random() - 0.5) * 5, // Adjusted X position
+                    Math.random() * 2 + 1,     // Adjusted Y position
+                    0
+                );
+                box.castShadow = true;
+                scene.add(box);
+                boxes.push(box);
+            }
+        }
+
+        // Paddle movement (touch controls)
+        document.addEventListener('touchmove', (event) => {
+            if (isGameOver) return;
+            const touchX = event.touches[0].clientX;
+            const normalizedX = (touchX / window.innerWidth) * 2 - 1;
+            paddle.position.x = normalizedX * 2.5; // Adjust paddle movement range
+        });
+
+        // Game loop
+        function gameLoop() {
+            if (isGameOver) return;
+
+            // Move the ball
+            ball.position.x += ballSpeedX;
+            ball.position.y += ballSpeedY;
+
+            // Check for collision with paddle
+            if (
+                ball.position.y <= paddle.position.y + 0.2 &&
+                Math.abs(ball.position.x - paddle.position.x) < 0.6
+            ) {
+                ballSpeedY = Math.abs(ballSpeedY);
+                ballSpeedX += (ball.position.x - paddle.position.x) * 0.02;
+            }
+
+            // Check for wall collisions
+            if (ball.position.x <= wallLeft || ball.position.x >= wallRight) {
+                ballSpeedX = -ballSpeedX;
+            }
+            if (ball.position.y >= wallTop) {
+                ballSpeedY = -ballSpeedY;
+            }
+
+            // Check for collision with boxes
+            boxes.forEach((box, index) => {
+                if (
+                    Math.abs(ball.position.x - box.position.x) < boxSize / 2 &&
+                    Math.abs(ball.position.y - box.position.y) < boxSize / 2
+                ) {
+                    scene.remove(box); // Remove box
+                    boxes.splice(index, 1); // Remove from array
+                    ballSpeedY = -ballSpeedY; // Reflect ball
+                }
+            });
+
+            // Check if level is complete
+            if (boxes.length === 0) {
+                currentLevel++;
+                levelDisplay.textContent = `Level: ${currentLevel}`;
+                ballSpeedX *= 1.1; // Increase ball speed
+                ballSpeedY *= 1.1;
+                createBoxes(currentLevel); // Create new level
+            }
+
+            // Check for game over
+            if (ball.position.y <= wallBottom) {
+                isGameOver = true;
+                gameOverMessage.style.display = 'block';
+                restartButton.style.display = 'block';
+            }
+
+            renderer.render(scene, camera);
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Resize canvas for responsiveness
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Restart the game
+        restartButton.addEventListener('click', () => {
+            isGameOver = false;
+            gameOverMessage.style.display = 'none';
+            restartButton.style.display = 'none';
+            currentLevel = 1;
+            ballSpeedX = 0.05;
+            ballSpeedY = 0.05;
+            createBoxes(currentLevel);
+            levelDisplay.textContent = `Level: ${currentLevel}`;
+            ball.position.set(0, 0, 0);
+            gameLoop();
+        });
+
+        // Start the game
+        camera.position.z = 7;
+        createBoxes(currentLevel);
+        gameLoop();
+    </script>
+</body>
+</html>
